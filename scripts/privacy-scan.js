@@ -8,10 +8,11 @@
  * CUITs in my-afip). One hard-coded rule set would mean false negatives in one
  * repo and false positives in the others.
  *
- * Four consumers:
+ * Five consumers:
  *   --hook            stdin is a Claude Code PreToolUse payload (see hooks/git-guard.sh)
  *   --staged          scan the index (for a local pre-commit hook)
  *   --range A...B     scan a commit range (CI)
+ *   --tracked         audit EVERY tracked file, not just a diff (onboarding, periodic audit)
  *   --against-refs    LOCAL ONLY: compare tracked files against a real-document
  *                     corpus outside the repo (opt in via `refsDir` in config)
  *
@@ -41,10 +42,29 @@ const path = require('path');
 // A repo's .privacy-scan.json ADDS to these; it does not silently replace them.
 // ---------------------------------------------------------------------------
 
+/**
+ * Azurite's development account key, published in Microsoft's own docs. All
+ * three repos run their tests and their docker-compose against Azurite, so this
+ * exact string is committed on purpose in all three. A default that flags it is
+ * a guaranteed false positive, and a scanner that cries wolf on the documented
+ * dev credential is a scanner people switch off.
+ *
+ * A repo cannot fix this from its own config: `.privacy-scan.json` ADDS to the
+ * defaults, so a narrower local rule carrying this lookahead never gets a say —
+ * the broad default has already matched. Hence the exemption lives here.
+ */
+const AZURITE_DEV_KEY =
+  'Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==';
+
 /** High-precision credential shapes. Near-zero false positives — these deny. */
 const DEFAULT_SECRET_PATTERNS = [
-  ['AccountKey\\s*=\\s*[A-Za-z0-9+/=]{16,}', 'an Azure Storage AccountKey'],
-  ['DefaultEndpointsProtocol\\s*=\\s*https?\\s*;', 'an Azure Storage connection string'],
+  [`AccountKey\\s*=\\s*(?!${AZURITE_DEV_KEY})[A-Za-z0-9+/=]{16,}`, 'an Azure Storage AccountKey'],
+  // `https` only, not `https?`. Azure never issues an http connection string, so
+  // http means a local emulator — and in folded YAML the protocol lands on its
+  // own line, away from the key, where the lookahead above cannot reach it.
+  // Nothing is lost: a real account reached over http still carries a real
+  // AccountKey, which the rule above catches whatever the protocol says.
+  ['DefaultEndpointsProtocol\\s*=\\s*https\\s*;', 'an Azure Storage connection string'],
   ['SharedAccessSignature\\s*=', 'an Azure SAS token'],
   ['sk-ant-api\\d\\d-[A-Za-z0-9\\-_]{20,}', 'an Anthropic API key'],
   ['\\bgh[pousr]_[A-Za-z0-9]{30,}', 'a GitHub token'],
@@ -150,6 +170,13 @@ function loadConfig(cwd) {
       [...(raw.disableDefaultSecrets ? [] : DEFAULT_SECRET_PATTERNS), ...(raw.secretPatterns || [])],
       'secretPatterns'
     ),
+    // A rule's own `unless` cannot reach the DEFAULTS — a repo cannot append an
+    // `unless` to the built-in `.env` rule. But `.env.test` holding Azurite
+    // placeholders is committed on purpose in my-finances, so there has to be a
+    // way to re-allow a path a default rule denies. This list is checked before
+    // every rule, defaults included. Keep it to named files: it is the one
+    // switch that can silence a default deny.
+    privatePathExceptions: (raw.privatePathExceptions || []).map(toRegExp),
     fixturePaths: (raw.fixturePaths || DEFAULT_FIXTURE_PATHS).map(toRegExp),
     safePrefixes: raw.safePrefixes || [],
     safeRootFiles: new Set(raw.safeRootFiles || []),
@@ -414,6 +441,7 @@ function createScanner(config) {
   /** @returns {string|null} what the path is, if it must never be staged */
   function privatePathReason(p) {
     const norm = String(p).replace(/^\.\//, '');
+    if ((config.privatePathExceptions || []).some((re) => re.test(norm))) return null;
     for (const rule of config.privatePaths) {
       if (!rule.re.test(norm)) continue;
       if (rule.unless.some((re) => re.test(norm))) continue;
@@ -456,11 +484,14 @@ function createScanner(config) {
     const termList = (opts.terms || []).filter(Boolean);
     const allowsSecrets = opts.allowsSecrets || (() => false);
 
-    for (const { path: p, text } of lines) {
+    for (const { path: p, text, line } of lines) {
       if (!allowsSecrets(p) && !isSelfExempt(p) && !ALLOW_LINE_PRAGMA.test(text)) {
         for (const rule of config.secretPatterns) {
           if (rule.re.test(text)) {
-            secrets.push({ path: p, label: rule.what });
+            // `line` is carried through only when the caller supplied one
+            // (--tracked does; diff modes do not). Never carry `text` — a hit
+            // is by definition private, and findings get printed.
+            secrets.push(line === undefined ? { path: p, label: rule.what } : { path: p, label: rule.what, line });
             break;
           }
         }
@@ -816,6 +847,76 @@ function runScan(diffArgs, scope, cwd, config, scanner) {
 }
 
 // ---------------------------------------------------------------------------
+// --tracked (audit): every tracked file, every line
+// ---------------------------------------------------------------------------
+
+/**
+ * Audit the whole working tree rather than a diff.
+ *
+ * `--range` and `--staged` only ever see ADDED lines. That is correct for a PR
+ * gate — pre-existing text must not re-fail every later PR — but it means
+ * anything committed before the scanner existed is permanently invisible to it.
+ * A real CUIT sat in my-afip's README for three months while `--range` runs
+ * reported clean, because the line never changed again.
+ *
+ * So this mode covers the two moments a diff cannot: onboarding a repo to the
+ * scanner, and periodic audit. It is deliberately NOT wired into CI — on an
+ * established repo it reports history rather than regressions, and a gate that
+ * fails for reasons the current PR did not cause is a gate people switch off.
+ */
+function runTrackedAudit(cwd, config, scanner) {
+  const { privatePathReason, scanLines } = scanner;
+  const allowsSecrets = makePragmaChecker(cwd);
+  const paths = git(['ls-files'], cwd).split('\n').filter(Boolean);
+
+  const pathHits = [];
+  const lines = [];
+  let skipped = 0;
+
+  for (const p of paths) {
+    const what = privatePathReason(p);
+    if (what) pathHits.push({ path: p, what });
+
+    if (/\.(png|jpe?g|gif|webp|ico|woff2?|ttf|eot|pdf|zip|gz|tgz|mp4|lock)$/i.test(p)) continue;
+    let text;
+    try {
+      text = fs.readFileSync(path.join(cwd, p), 'utf8');
+    } catch {
+      skipped++;
+      continue;
+    }
+    if (text.includes('\0')) continue; // binary
+    text.split('\n').forEach((t, i) => lines.push({ path: p, text: t, line: i + 1 }));
+  }
+
+  const { secrets } = scanLines(lines, { terms: loadTerms(cwd, config), allowsSecrets });
+
+  const located = dedupe(
+    secrets.map((s) => `  ${s.path}${s.line ? `:${s.line}` : ''}\n      looks like ${s.label}`)
+  );
+
+  const problems = [...pathHits.map((h) => `  ${h.path}\n      is ${h.what}`), ...located];
+
+  if (problems.length) {
+    process.stderr.write(
+      `privacy-scan: ${problems.length} finding(s) across ${paths.length} tracked file(s)\n\n` +
+        problems.join('\n') +
+        '\n\n  These are pre-existing, so a diff-based scan cannot see them.\n' +
+        '  Anything already pushed should be treated as published: redacting now\n' +
+        '  does not unpublish it.\n' +
+        `\n  ${config.wording.fixHint}\n`
+    );
+    process.exit(1);
+  }
+
+  process.stdout.write(
+    `privacy-scan: clean — ${paths.length} tracked file(s) audited` +
+      (skipped ? `, ${skipped} unreadable` : '') +
+      '\n'
+  );
+}
+
+// ---------------------------------------------------------------------------
 // --against-refs (local only)
 // ---------------------------------------------------------------------------
 
@@ -943,6 +1044,11 @@ function main(argv) {
     process.exit(scanAgainstRefs(cwd, config));
   }
 
+  if (argv.includes('--tracked')) {
+    runTrackedAudit(cwd, config, scanner);
+    return;
+  }
+
   if (argv.includes('--staged')) {
     runScan(['--cached'], 'staged changes', cwd, config, scanner);
     return;
@@ -954,7 +1060,9 @@ function main(argv) {
     return;
   }
 
-  process.stderr.write('usage: privacy-scan.js (--hook | --staged | --range <A...B> | --against-refs)\n');
+  process.stderr.write(
+    'usage: privacy-scan.js (--hook | --staged | --range <A...B> | --tracked | --against-refs)\n'
+  );
   process.exit(2);
 }
 

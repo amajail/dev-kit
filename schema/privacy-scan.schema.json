@@ -46,6 +46,11 @@
       "items": { "$ref": "#/definitions/rule" },
       "description": "Paths that must never be committed. Deterministic — these deny outright. ADDED to the built-in defaults (.env, local.settings.json, .claude/settings.local.json, .mcp.json)."
     },
+    "privatePathExceptions": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Paths re-allowed no matter which rule denies them — the only way to exempt a path from a BUILT-IN rule, since a repo cannot append `unless` to a default (e.g. `.env.test` holding Azurite placeholders). Checked before every rule, so keep it to named files; prefer `unless` on your own rule where that works."
+    },
     "secretPatterns": {
       "type": "array",
       "items": { "$ref": "#/definitions/rule" },
