@@ -89,7 +89,9 @@ documents catches that, and CI must never hold them — so this mode is local-on
 ```bash
 git clone https://github.com/amajail/dev-kit.git ~/repos/dev-kit
 ln -s ~/repos/dev-kit/claude/CLAUDE.md ~/.claude/CLAUDE.md
+mkdir -p ~/.claude/skills
 ln -s ~/repos/dev-kit/claude/skills/claude-md-fix ~/.claude/skills/claude-md-fix
+ln -s ~/repos/dev-kit/claude/skills/family-check  ~/.claude/skills/family-check
 mkdir -p ~/.claude/hooks && ln -s ~/repos/dev-kit/hooks/git-guard.sh ~/.claude/hooks/git-guard.sh
 ```
 
