@@ -241,6 +241,20 @@ describe('scanLines — secrets', () => {
     assert.deepEqual(secrets, []);
   });
 
+  test('an unquoted .env-style connection string is still caught — by the other rules', () => {
+    // Pinning the reasoning behind the tightened env-var rule: that rule needs
+    // quotes, so it does NOT match a raw .env line. That is fine only because
+    // the real credential shapes below catch it anyway (and .env is a blocked
+    // path besides). If both of those ever change, this test fails loudly.
+    const { secrets } = scanLines([
+      {
+        path: 'config/settings',
+        text: 'AZURE_STORAGE_CONNECTION_STRING=DefaultEndpointsProtocol=https;AccountName=x;AccountKey=abcdefghijklmnopqrstuvwx1234==',
+      },
+    ]);
+    assert.equal(secrets.length, 1);
+  });
+
   test('still flags a quoted connection string assigned to that env var', () => {
     const { secrets } = scanLines([
       {
@@ -339,6 +353,14 @@ describe('heredoc bodies are data, not commands', () => {
   test('handles unquoted and dash-suppressed delimiters', () => {
     assert.deepEqual(classifyCommand(['cat <<EOF', 'git add -f x', 'EOF'].join('\n')), []);
     assert.deepEqual(classifyCommand(['cat <<-END', '\tgit add -f x', '\tEND'].join('\n')), []);
+  });
+
+  test('a git command quoted as an ARGUMENT is data, not an invocation', () => {
+    // Found the hard way: testing this guard means echoing payloads that contain
+    // `git add -f`, and my-expenses' inline grep — which this replaces — blocked
+    // the test command itself. Tokenizing finds `printf` as the verb, not git.
+    const cmd = `printf '{"tool_input":{"command":"git add -f x"}}' | ./git-guard.sh`;
+    assert.deepEqual(classifyCommand(cmd), []);
   });
 });
 
