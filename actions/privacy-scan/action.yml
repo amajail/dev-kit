@@ -1,0 +1,50 @@
+name: 'privacy scan'
+description: 'Fail-closed scan of a commit range for private data and credentials, driven by the repo .privacy-scan.json'
+
+# A composite action rather than a reusable workflow on purpose: it slots into
+# each repo's existing `pr-checks.yml` job instead of dictating the job shape,
+# and GitHub fetches this repo automatically, so there is no second checkout
+# and no token to manage. dev-kit is public, so private callers can use it too.
+
+inputs:
+  range:
+    description: >-
+      Commit range to scan. Defaults to origin/<base>...HEAD on a pull_request
+      and HEAD~1...HEAD on a push.
+    required: false
+    default: ''
+  working-directory:
+    description: 'Repo root holding .privacy-scan.json'
+    required: false
+    default: '.'
+
+runs:
+  using: composite
+  steps:
+    - name: Scan changed lines for private data and credentials
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        INPUT_RANGE: ${{ inputs.range }}
+        EVENT_NAME: ${{ github.event_name }}
+        BASE_REF: ${{ github.base_ref }}
+      run: |
+        set -euo pipefail
+
+        if [ -n "$INPUT_RANGE" ]; then
+          RANGE="$INPUT_RANGE"
+        elif [ "$EVENT_NAME" = "pull_request" ]; then
+          RANGE="origin/${BASE_REF}...HEAD"
+        elif git rev-parse HEAD~1 >/dev/null 2>&1; then
+          RANGE="HEAD~1...HEAD"
+        else
+          # Root commit: diff against the empty tree so the first commit is
+          # scanned rather than silently skipped.
+          RANGE="4b825dc642cb6eb9a060e54bf8d69288fbee4904...HEAD"
+        fi
+
+        echo "Scanning $RANGE"
+        # No `npm ci` — privacy-scan.js is dependency-free, so this job stays a
+        # few seconds. This is the fail-closed half of the guard: the PreToolUse
+        # hook only sees Claude's git commands, CI sees everything reaching a PR.
+        node "${{ github.action_path }}/../../scripts/privacy-scan.js" --range "$RANGE"

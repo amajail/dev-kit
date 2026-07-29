@@ -1,0 +1,103 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/amajail/dev-kit/main/schema/privacy-scan.schema.json",
+  "title": "privacy-scan config",
+  "description": "Per-repo rules for the shared privacy scanner in amajail/dev-kit. The engine is shared; these rules are not, because what counts as private differs per repo.",
+  "type": "object",
+  "additionalProperties": true,
+
+  "definitions": {
+    "rule": {
+      "description": "A pattern plus a human description of what it matches. Array form is [pattern, what]; object form adds `unless`.",
+      "oneOf": [
+        {
+          "type": "array",
+          "items": [{ "type": "string" }, { "type": "string" }],
+          "minItems": 2,
+          "maxItems": 2
+        },
+        {
+          "type": "object",
+          "required": ["pattern", "what"],
+          "properties": {
+            "pattern": {
+              "type": "string",
+              "description": "JS regex source. Prefix with (?i) for case-insensitive. Lookahead/lookbehind supported — used to exempt a single known-safe value such as the well-known Azurite dev key."
+            },
+            "what": {
+              "type": "string",
+              "description": "What this is, in words, e.g. 'a bank statement'. Shown to whoever is blocked."
+            },
+            "unless": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Patterns that re-allow a match, e.g. CSV is a bank export everywhere except under tests/fixtures/."
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    }
+  },
+
+  "properties": {
+    "privatePaths": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/rule" },
+      "description": "Paths that must never be committed. Deterministic — these deny outright. ADDED to the built-in defaults (.env, local.settings.json, .claude/settings.local.json, .mcp.json)."
+    },
+    "secretPatterns": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/rule" },
+      "description": "Regexes over ADDED lines only, so pre-existing text never re-fails a later PR. ADDED to the built-in credential shapes unless disableDefaultSecrets is set."
+    },
+    "disableDefaultSecrets": {
+      "type": "boolean",
+      "default": false,
+      "description": "Drop the built-in credential patterns. Rarely correct — prefer adding to them."
+    },
+    "fixturePaths": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Where fake numbers are the whole point, so the private-terms check stays quiet. REPLACES the defaults if given."
+    },
+    "safePrefixes": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Where ordinary work lives. Only affects the broad-`git add` heuristic in hook mode: anything outside these prompts the owner rather than denying."
+    },
+    "safeRootFiles": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Individual non-prefixed paths that are fine to stage, e.g. package.json."
+    },
+    "privateTermsFile": {
+      "type": "string",
+      "description": "Path to a gitignored newline-separated list of real terms (tickers, merchant names). A term appearing beside a number outside a fixture prompts the owner. Gitignored on purpose: a committed list of real terms is itself a disclosure — so CI can never run this check."
+    },
+    "selfExempt": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Files exempt from CONTENT rules because they necessarily contain the patterns they look for (this config, the scanner). Never exempt from PATH rules."
+    },
+    "refsDir": {
+      "type": "string",
+      "description": "Local-only corpus of real documents for --against-refs. Supports a leading ~. Never available in CI, by design."
+    },
+    "benignTokens": {
+      "type": "string",
+      "description": "Regex for tokens that legitimately coincide with real-document text (calendar years, statutory reference numbers). Used by --against-refs only."
+    },
+    "wording": {
+      "type": "object",
+      "description": "Domain wording for the messages shown to whoever is blocked.",
+      "properties": {
+        "boundary": { "type": "string", "description": "What .gitignore is protecting, e.g. 'real holdings and credentials'." },
+        "placeholders": { "type": "string", "description": "What to use instead, e.g. 'placeholder values (SYMBOL, 123.45)'." },
+        "confirm": { "type": "string", "description": "What to check for when asked to confirm a broad add." },
+        "fixHint": { "type": "string", "description": "Closing line: where the real thing belongs, and how to fix the rule rather than work around it." }
+      },
+      "additionalProperties": false
+    }
+  }
+}

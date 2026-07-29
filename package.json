@@ -1,0 +1,13 @@
+{
+  "name": "@amajail/dev-kit",
+  "version": "0.1.0",
+  "description": "Shared privacy guard, Claude Code rules and skills for the my-afip / my-finances / my-expenses family",
+  "private": true,
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "privacy:scan": "node scripts/privacy-scan.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
