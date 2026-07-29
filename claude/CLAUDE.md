@@ -7,7 +7,8 @@ below — 3 bold spans, spent on the three things that have actually cost someth
 ## Git
 
 - Commit subject: `<type>: <imperative>`, ≤72 chars, type ∈ `feat|fix|refactor|docs|test|ci|chore|perf`.
-- Branch `feature/…` or `fix/…` off the default branch. Never commit directly to it.
+- Branch `<type>/kebab-case` off the default branch, same type set as the subject (`feature/` also
+  reads as `feat`). Never commit directly to it.
 - Ask before committing ad-hoc work. A repo may carve out an exception (my-finances lets speckit work
   commit as it goes); the exception belongs in that repo's file, not here.
 
