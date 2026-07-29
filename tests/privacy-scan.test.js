@@ -13,6 +13,7 @@ const {
   splitSegments,
   createScanner,
   compileRules,
+  loadConfig,
   toRegExp,
   DEFAULT_SECRET_PATTERNS,
   DEFAULT_PRIVATE_PATHS,
@@ -422,5 +423,71 @@ describe('config compilation', () => {
 
   test('names the offending rule when a regex is invalid', () => {
     assert.throws(() => compileRules([['[unclosed', 'x']], 'privatePaths'), /bad regex in privatePaths/);
+  });
+});
+
+// These go through loadConfig, NOT a hand-built createScanner config. The
+// lookahead test above passes only because it bypasses the merge: a repo's
+// rules are ADDED to the defaults, so a narrow local rule cannot stop a broad
+// default from matching first. Azurite's key reaching a repo's diff is the
+// case that actually happens, so assert it against the merged rule set.
+describe('default secret patterns, as merged by loadConfig', () => {
+  const AZURITE_KEY =
+    'Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==';
+  // No config file there, so this is the defaults and nothing else.
+  const defaults = createScanner(loadConfig('/nonexistent-repo-for-tests'));
+  const secretsIn = (text) => defaults.scanLines([{ path: 'docker-compose.yml', text }]).secrets;
+
+  test('allows the published Azurite development key', () => {
+    assert.deepEqual(secretsIn(`AccountKey=${AZURITE_KEY}`), []);
+    assert.deepEqual(
+      secretsIn(
+        `AZURE_STORAGE_CONNECTION_STRING: "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;` +
+          `AccountKey=${AZURITE_KEY};TableEndpoint=http://127.0.0.1:10002/devstoreaccount1;"`
+      ),
+      []
+    );
+  });
+
+  test('allows folded YAML, where the protocol lands on its own line', () => {
+    // docker-compose.yml writes the connection string as a `>-` block, so the
+    // protocol and the key are separate added lines and no per-line lookahead
+    // can tie them together.
+    assert.deepEqual(secretsIn('        DefaultEndpointsProtocol=http;'), []);
+    assert.deepEqual(secretsIn('        AccountName=devstoreaccount1;'), []);
+  });
+
+  test('still blocks any other account key, and any https connection string', () => {
+    assert.equal(secretsIn('AccountKey=Zm9yZ2VkZm9yZ2VkZm9yZ2VkZm9yZ2VkMTIzNA==').length, 1);
+    assert.equal(secretsIn('DefaultEndpointsProtocol=https;AccountName=realacct;').length, 1);
+  });
+});
+
+describe('--tracked audit support', () => {
+  test('carries a line number through when the caller supplies one', () => {
+    // --tracked reports file:line. Diff modes do not have line numbers, so the
+    // field is only present when given — an earlier version looked the hit back
+    // up by matching on `text`, which scanLines does not return, so every
+    // finding silently lost its location.
+    const { secrets } = scanLines([
+      { path: 'README.md', text: 'token: ghp_abcdefghijklmnopqrstuvwxyz0123456789', line: 38 },
+    ]);
+    assert.equal(secrets.length, 1);
+    assert.equal(secrets[0].line, 38);
+  });
+
+  test('omits the line field entirely for diff-mode callers', () => {
+    const { secrets } = scanLines([
+      { path: 'README.md', text: 'token: ghp_abcdefghijklmnopqrstuvwxyz0123456789' },
+    ]);
+    assert.deepEqual(secrets, [{ path: 'README.md', label: 'a GitHub token' }]);
+  });
+
+  test('never carries the offending text into a finding', () => {
+    // Findings get printed. A secret's own value must not travel with it.
+    const { secrets } = scanLines([
+      { path: 'a.js', text: 'ghp_abcdefghijklmnopqrstuvwxyz0123456789', line: 1 },
+    ]);
+    assert.equal(Object.hasOwn(secrets[0], 'text'), false);
   });
 });
