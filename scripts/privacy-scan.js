@@ -150,6 +150,13 @@ function loadConfig(cwd) {
       [...(raw.disableDefaultSecrets ? [] : DEFAULT_SECRET_PATTERNS), ...(raw.secretPatterns || [])],
       'secretPatterns'
     ),
+    // A rule's own `unless` cannot reach the DEFAULTS — a repo cannot append an
+    // `unless` to the built-in `.env` rule. But `.env.test` holding Azurite
+    // placeholders is committed on purpose in my-finances, so there has to be a
+    // way to re-allow a path a default rule denies. This list is checked before
+    // every rule, defaults included. Keep it to named files: it is the one
+    // switch that can silence a default deny.
+    privatePathExceptions: (raw.privatePathExceptions || []).map(toRegExp),
     fixturePaths: (raw.fixturePaths || DEFAULT_FIXTURE_PATHS).map(toRegExp),
     safePrefixes: raw.safePrefixes || [],
     safeRootFiles: new Set(raw.safeRootFiles || []),
@@ -414,6 +421,7 @@ function createScanner(config) {
   /** @returns {string|null} what the path is, if it must never be staged */
   function privatePathReason(p) {
     const norm = String(p).replace(/^\.\//, '');
+    if ((config.privatePathExceptions || []).some((re) => re.test(norm))) return null;
     for (const rule of config.privatePaths) {
       if (!rule.re.test(norm)) continue;
       if (rule.unless.some((re) => re.test(norm))) continue;

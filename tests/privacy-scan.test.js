@@ -159,6 +159,34 @@ describe('isPrivatePath', () => {
     assert.equal(isPrivatePath('data/export.csv'), true);
     assert.equal(isPrivatePath('tests/fixtures/sample.csv'), false);
   });
+
+  test('privatePathExceptions can re-allow a path a DEFAULT rule denies', () => {
+    // `unless` lives on a rule, so it cannot reach the built-in `.env` rule —
+    // and my-finances commits `.env.test` (Azurite placeholders) on purpose.
+    // Same scanner config, only the exception list differs.
+    const base = {
+      privatePaths: compileRules(DEFAULT_PRIVATE_PATHS, 'privatePaths'),
+      secretPatterns: [],
+      fixturePaths: [],
+      safePrefixes: [],
+      safeRootFiles: new Set(),
+      selfExempt: [],
+      wording: {},
+    };
+    const strict = createScanner(base);
+    const lenient = createScanner({
+      ...base,
+      privatePathExceptions: ['(^|/)\\.env\\.test$', '(^|/)dashboard/\\.env\\.production$'].map(toRegExp),
+    });
+
+    assert.equal(strict.privatePathReason('.env.test'), 'an environment file');
+    assert.equal(lenient.privatePathReason('.env.test'), null);
+    assert.equal(lenient.privatePathReason('dashboard/.env.production'), null);
+    // The exception is narrow: everything else the default rule denies stays denied.
+    assert.equal(lenient.privatePathReason('.env'), 'an environment file');
+    assert.equal(lenient.privatePathReason('.env.local'), 'an environment file');
+    assert.equal(lenient.privatePathReason('dashboard/.env'), 'an environment file');
+  });
 });
 
 describe('isSafeToStage', () => {
