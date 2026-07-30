@@ -10,7 +10,11 @@ Slice method per `/slice-roadmap`: Slice 0 freezes the shared contracts, each sl
 file set (here: disjoint *repos + files*, so parallel branches never collide), fan-in merges at the
 end. Check items off as they land.
 
-**Status (2026-07-30): not started.**
+**Status (2026-07-30): S0 + A–D built and verified; PRs open awaiting owner merge** —
+afip [#38](https://github.com/amajail/my-afip/pull/38) (auth) + [#39](https://github.com/amajail/my-afip/pull/39) (MCP),
+finances [#55](https://github.com/amajail/my-finances.adrimajail.com/pull/55) (auth) + [#56](https://github.com/amajail/my-finances.adrimajail.com/pull/56) (debt),
+expenses [#25](https://github.com/amajail/my-expenses/pull/25) (parsers+MCP), dev-kit [#6](https://github.com/amajail/dev-kit/pull/6) (contracts).
+E, F, M1, M2 not started; M1 unblocks once B+C+D merge and deploy.
 
 ```mermaid
 flowchart TD
@@ -54,13 +58,13 @@ hole — start it first regardless of lanes.
 The integration analogue of my-expenses' frozen Pydantic ↔ api.ts contract: agree the tool surfaces
 once so the two MCP slices and the monthly-close routine build against paper, not against each other.
 
-- [ ] my-afip MCP tools: `list_orders(month)`, `list_invoices(month)`, `monthly_income(month)` —
+- [x] my-afip MCP tools: `list_orders(month)`, `list_invoices(month)`, `monthly_income(month)` —
       names, arg/return schemas, error shape (copy my-finances' `{error, code, details}`)
-- [ ] my-expenses MCP tools: `spending_summary(month, kind?)`, `by_category(month, kind?)`,
+- [x] my-expenses MCP tools: `spending_summary(month, kind?)`, `by_category(month, kind?)`,
       `search_transactions(query)` — read-only; `Card payment` exclusion holds (CLAUDE.md rule 2)
-- [ ] Monthly-close report shape: income, spend by category, surplus, savings rate,
+- [x] Monthly-close report shape: income, spend by category, surplus, savings rate,
       unreconciled list — the fields M1 must fill and M2 may consume
-- [ ] `portfolioSettings` key: `monthlyCashflow` = `{month, incomeArs, spendArs, surplusArs,
+- [x] `portfolioSettings` key: `monthlyCashflow` = `{month, incomeArs, spendArs, surplusArs,
       computedAt}` — written by M1, read by M2
 
 **Exit:** contracts written in dev-kit; every later slice cites them instead of negotiating.
@@ -177,6 +181,20 @@ an owner-gated page.
   existing APIs/MCPs at run time; no sync problem, one-datastore rule intact.
 - **Write tools on the new MCPs** — my-afip files taxes and my-expenses ingests statements; both
   stay human-triggered. my-finances' audited writes remain the only MCP write surface.
+
+## Decisions made (2026-07-30 build, S0+A–D)
+
+- **All three SWAs had zero registered users** — not just my-expenses' pending invite. Three owner
+  invites issued via `az staticwebapp users invite`; each must be accepted **before** its auth PR
+  merges, or the deploy locks the owner out (7-day expiry: 2026-08-06).
+- **fxDegraded nulls USD figures rather than computing on stale data** (no last-known-good rate is
+  stored), and the weekly analysis **refuses** on a degraded summary — null `valueUsd` would corrupt
+  its partitioning math; a caveat can't rescue that. Dashboard surfacing is finances #57.
+- **afip `list_invoices` derives from the orders table** (`success === true`) — the `invoices` table
+  lacks voucher numbers and amounts; orders are already the source of truth for `report`. Manual
+  invoices fall back to order date (they store no invoice date).
+- **expenses MCP pins `mcp==1.12.4`** — the newest that resolves against fastapi 0.115.6/pydantic
+  2.10.5. Upgrading is a coordinated-bump slice of its own (expenses #26).
 
 ## Backlog (good, independent, not scheduled)
 
