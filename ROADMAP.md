@@ -128,7 +128,7 @@ an owner-gated page.
 
 ## Slice E — `@amajail/money` (1 day, optional — schedule into slack)
 
-**Owns:** new package (own repo or dev-kit workspace)
+**Owns:** new package — **dev-kit workspace** (owner decision, 2026-07-30)
 
 - [ ] `Money` (ARS/USD), es-AR `Intl.NumberFormat` helpers, `YYYY-MM` month keys, MEP/dolarapi
       fetcher with an **explicit** failure state (no more silent 1:1)
@@ -193,6 +193,7 @@ an owner-gated page.
 - **afip `list_invoices` derives from the orders table** (`success === true`) — the `invoices` table
   lacks voucher numbers and amounts; orders are already the source of truth for `report`. Manual
   invoices fall back to order date (they store no invoice date).
+- **Slice E lives in dev-kit** as a workspace package, not its own repo (owner, 2026-07-30).
 - **expenses MCP pins `mcp==1.12.4`** — the newest that resolves against fastapi 0.115.6/pydantic
   2.10.5. Upgrading is a coordinated-bump slice of its own (expenses #26).
 
