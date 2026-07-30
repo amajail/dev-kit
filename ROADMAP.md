@@ -10,7 +10,7 @@ Slice method per `/slice-roadmap`: Slice 0 freezes the shared contracts, each sl
 file set (here: disjoint *repos + files*, so parallel branches never collide), fan-in merges at the
 end. Check items off as they land.
 
-**Status (2026-07-30): not started.**
+**Status (2026-07-30): Slice 0 shipped (`docs/mcp-contracts.md`); A–D in flight.**
 
 ```mermaid
 flowchart TD
@@ -54,13 +54,13 @@ hole — start it first regardless of lanes.
 The integration analogue of my-expenses' frozen Pydantic ↔ api.ts contract: agree the tool surfaces
 once so the two MCP slices and the monthly-close routine build against paper, not against each other.
 
-- [ ] my-afip MCP tools: `list_orders(month)`, `list_invoices(month)`, `monthly_income(month)` —
+- [x] my-afip MCP tools: `list_orders(month)`, `list_invoices(month)`, `monthly_income(month)` —
       names, arg/return schemas, error shape (copy my-finances' `{error, code, details}`)
-- [ ] my-expenses MCP tools: `spending_summary(month, kind?)`, `by_category(month, kind?)`,
+- [x] my-expenses MCP tools: `spending_summary(month, kind?)`, `by_category(month, kind?)`,
       `search_transactions(query)` — read-only; `Card payment` exclusion holds (CLAUDE.md rule 2)
-- [ ] Monthly-close report shape: income, spend by category, surplus, savings rate,
+- [x] Monthly-close report shape: income, spend by category, surplus, savings rate,
       unreconciled list — the fields M1 must fill and M2 may consume
-- [ ] `portfolioSettings` key: `monthlyCashflow` = `{month, incomeArs, spendArs, surplusArs,
+- [x] `portfolioSettings` key: `monthlyCashflow` = `{month, incomeArs, spendArs, surplusArs,
       computedAt}` — written by M1, read by M2
 
 **Exit:** contracts written in dev-kit; every later slice cites them instead of negotiating.
