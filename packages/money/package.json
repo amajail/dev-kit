@@ -1,0 +1,29 @@
+{
+  "name": "@amajail/money",
+  "version": "0.1.0",
+  "description": "Money (ARS/USD), es-AR formatting, YYYY-MM month keys, and a MEP fetcher with an explicit failure state — shared by the my-afip / my-finances / my-expenses family",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./money": "./src/money.js",
+    "./format": "./src/format.js",
+    "./month": "./src/month.js",
+    "./mep": "./src/mep.js"
+  },
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node --test tests/"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/amajail/dev-kit.git",
+    "directory": "packages/money"
+  },
+  "license": "MIT"
+}
