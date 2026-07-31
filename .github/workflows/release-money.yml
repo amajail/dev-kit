@@ -1,0 +1,42 @@
+name: Release @amajail/money
+
+on:
+  push:
+    tags:
+      - "money-v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Tag must match the package version
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#money-v}"
+          PKG_VERSION=$(node -p "require('./packages/money/package.json').version")
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "::error::tag money-v$TAG_VERSION != packages/money version $PKG_VERSION"
+            exit 1
+          fi
+
+      - name: Test
+        run: node --test packages/money/tests/*.test.js
+
+      - name: Pack
+        run: npm pack ./packages/money
+
+      - name: Create release with tarball
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" ./amajail-money-*.tgz \
+            --title "@amajail/money $GITHUB_REF_NAME" \
+            --notes "Pin as: \`https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/amajail-money-${GITHUB_REF_NAME#money-v}.tgz\`"

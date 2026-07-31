@@ -10,11 +10,11 @@ Slice method per `/slice-roadmap`: Slice 0 freezes the shared contracts, each sl
 file set (here: disjoint *repos + files*, so parallel branches never collide), fan-in merges at the
 end. Check items off as they land.
 
-**Status (2026-07-30): S0 + A–D built and verified; PRs open awaiting owner merge** —
-afip [#38](https://github.com/amajail/my-afip/pull/38) (auth) + [#39](https://github.com/amajail/my-afip/pull/39) (MCP),
-finances [#55](https://github.com/amajail/my-finances.adrimajail.com/pull/55) (auth) + [#56](https://github.com/amajail/my-finances.adrimajail.com/pull/56) (debt),
-expenses [#25](https://github.com/amajail/my-expenses/pull/25) (parsers+MCP), dev-kit [#6](https://github.com/amajail/dev-kit/pull/6) (contracts).
-E, F, M1, M2 not started; M1 unblocks once B+C+D merge and deploy.
+**Status (2026-07-31): S0 + A–D merged, deployed and live-verified** (afip hotfixes
+[#40](https://github.com/amajail/my-afip/pull/40) + [#41](https://github.com/amajail/my-afip/pull/41):
+no eager `shared/config` on the Functions read path). **Slice E built** — `@amajail/money` in
+`packages/money`, released as a tag-pinned tarball, adopted in my-finances (dead `Money` copy deleted).
+F, M1, M2 remain; M1 is fully unblocked.
 
 ```mermaid
 flowchart TD
@@ -130,10 +130,13 @@ an owner-gated page.
 
 **Owns:** new package (own repo or dev-kit workspace)
 
-- [ ] `Money` (ARS/USD), es-AR `Intl.NumberFormat` helpers, `YYYY-MM` month keys, MEP/dolarapi
+- [x] `Money` (ARS/USD), es-AR `Intl.NumberFormat` helpers, `YYYY-MM` month keys, MEP/dolarapi
       fetcher with an **explicit** failure state (no more silent 1:1)
-- [ ] Pin by tag like `@amajail/ui` — never floating; `/family-check` already flags drift
+- [x] Pin by tag like `@amajail/ui` — never floating; `/family-check` already flags drift
+      (release-tarball URL: dev-kit's root package is private, so the tag ships a tarball)
 - [ ] Adopt in the two Node backends + dashboards; the Python backend shares conventions only
+      *(my-finances backend done — dead `Money` deleted, formatters delegate; my-afip's `Money`
+      swap and the dashboards are deferred: that VO is woven into tax-filing code)*
 
 **Exit:** tag-pinned in at least one consumer; second `Money` implementation deleted.
 
@@ -195,6 +198,18 @@ an owner-gated page.
   invoices fall back to order date (they store no invoice date).
 - **expenses MCP pins `mcp==1.12.4`** — the newest that resolves against fastapi 0.115.6/pydantic
   2.10.5. Upgrading is a coordinated-bump slice of its own (expenses #26).
+
+## Decisions made (2026-07-31, Slice E)
+
+- **`@amajail/money` distributes as a GitHub-release tarball**, not a `github:#tag` pin — dev-kit's
+  root package is `private: true` and npm cannot install a workspace subdirectory from a git URL.
+  Consumers pin `.../releases/download/money-vX.Y.Z/amajail-money-X.Y.Z.tgz`; the URL carries the tag.
+- **my-finances' `ArgentinaDatosMepProvider` stays** — it already fails explicitly (`MepFetchError`
+  → `fxDegraded`). The package's `fetchMepRate` (dolarapi bolsa) is for M1 and the dashboards, not a
+  forced replacement of a healthy provider.
+- **my-afip keeps its `Money` for now** — it throws my-afip's own error types inside tax-filing
+  entities; swapping it is real migration work, not a delete. The my-finances copy was literally dead
+  (only a barrel referenced it) and is gone.
 
 ## Backlog (good, independent, not scheduled)
 
